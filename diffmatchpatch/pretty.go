@@ -58,71 +58,54 @@ type LinesPrettyConfig struct {
 	Color bool
 	// Spacing is the space between the diff marker (e.g. "+", "-", " ") and the text.
 	Spacing string
-	// Context is the number of lines of context to show around the diff.
-	Context int
 }
 
 // DiffLinesPrettyText converts two strings into a pretty text report of the diffs by line.
-func (dmp *DiffMatchPatch) DiffLinesPrettyText(config LinesPrettyConfig, from, to string) string {
-	linesDiff := dmp.DiffLines(from, to)
-	var buff bytes.Buffer
-	firstLine := true
-	pushLine := func(marker rune, line string) {
-		if !firstLine {
-			buff.WriteRune('\n')
-		}
-		firstLine = false
-		buff.WriteRune(marker)
-		buff.WriteString(config.Spacing)
-		buff.WriteString(line)
-	}
-	for diffIdx, diff := range linesDiff {
-		switch diff.Type {
-		case DiffInsert:
-			if config.Color {
-				_, _ = buff.WriteString("\x1b[32m")
-			}
-			split := strings.Split(diff.Text, "\n")
-			for li, line := range split {
-				if li == len(split)-1 && diffIdx < len(linesDiff)-1 {
-					continue
-				}
-				pushLine('+', line)
-			}
-			if config.Color {
-				_, _ = buff.WriteString("\x1b[0m")
-			}
-		case DiffDelete:
-			if config.Color {
-				_, _ = buff.WriteString("\x1b[31m")
-			}
-			split := strings.Split(diff.Text, "\n")
-			for li, line := range split {
-				if li == len(split)-1 && diffIdx < len(linesDiff)-1 {
-					continue
-				}
-				pushLine('-', line)
-			}
-			if config.Color {
-				_, _ = buff.WriteString("\x1b[0m")
-			}
-		case DiffEqual:
-			split := strings.Split(diff.Text, "\n")
-			for li, line := range split {
-				if li == len(split)-1 && diffIdx < len(linesDiff)-1 {
-					continue
-				}
+func (dmp *DiffMatchPatch) DiffLinesPrettyText(config LinesPrettyConfig, text1, text2 string) string {
+	fromRunes, toRunes, linesMap := dmp.DiffLinesToRunes(text1, text2)
+	diffs := dmp.DiffMainRunes(fromRunes, toRunes, false)
+	patches := dmp.PatchMake(diffs)
 
-				// add context lines before the diff
-				if diffIdx > 0 && li < config.Context {
-					pushLine(' ', line)
-					continue
+	var buff bytes.Buffer
+	writeBlock := func(marker rune, block string, color string, lastDiff bool) {
+		if config.Color && color != "" {
+			_, _ = buff.WriteString(color)
+		}
+
+		startIdx := 0
+		for startIdx < len(block) {
+			endIdx := strings.Index(block[startIdx:], "\n")
+			if endIdx == -1 {
+				buff.WriteRune(marker)
+				buff.WriteString(config.Spacing)
+				buff.WriteString(block[startIdx:])
+				if !lastDiff {
+					buff.WriteRune('\n')
 				}
-				// add context lines after the diff
-				if diffIdx < len(linesDiff)-1 && li >= len(split)-config.Context {
-					pushLine(' ', line)
-					continue
-				}
+				break
+			}
+			buff.WriteRune(marker)
+			buff.WriteString(config.Spacing)
+			buff.WriteString(block[startIdx : startIdx+endIdx+1])
+			startIdx += endIdx + 1
+		}
+		if config.Color && color != "" {
+			_, _ = buff.WriteString("\x1b[0m")
+		}
+	}
+	for _, patch := range patches {
+		patch.addCoordsToBuffer(&buff)
+		buff.WriteRune('\n')
+		linesDiff := dmp.DiffCharsToLines(patch.diffs, linesMap)
+		for di, diff := range linesDiff {
+			lastDiff := di == len(linesDiff)-1
+			switch diff.Type {
+			case DiffInsert:
+				writeBlock('+', diff.Text, "\x1b[32m", lastDiff)
+			case DiffDelete:
+				writeBlock('-', diff.Text, "\x1b[31m", lastDiff)
+			case DiffEqual:
+				writeBlock(' ', diff.Text, "", lastDiff)
 			}
 		}
 	}

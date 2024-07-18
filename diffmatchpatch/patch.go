@@ -27,10 +27,7 @@ type Patch struct {
 	Length2 int
 }
 
-// String emulates GNU diff's format.
-// Header: @@ -382,8 +481,9 @@
-// Indices are printed as 1-based, not 0-based.
-func (p *Patch) String() string {
+func (p *Patch) addCoordsToBuffer(buffer *bytes.Buffer) {
 	var coords1, coords2 string
 
 	if p.Length1 == 0 {
@@ -48,9 +45,22 @@ func (p *Patch) String() string {
 	} else {
 		coords2 = strconv.Itoa(p.Start2+1) + "," + strconv.Itoa(p.Length2)
 	}
+	_, _ = buffer.WriteString("@@ -" + coords1 + " +" + coords2 + " @@")
+}
 
+func (p *Patch) Coords() string {
 	var text bytes.Buffer
-	_, _ = text.WriteString("@@ -" + coords1 + " +" + coords2 + " @@\n")
+	p.addCoordsToBuffer(&text)
+	return text.String()
+}
+
+// String emulates GNU diff's format.
+// Header: @@ -382,8 +481,9 @@
+// Indices are printed as 1-based, not 0-based.
+func (p *Patch) String() string {
+	var text bytes.Buffer
+	p.addCoordsToBuffer(&text)
+	text.WriteRune('\n')
 
 	// Escape the body of the patch with %xx notation.
 	for _, aDiff := range p.diffs {
