@@ -63,7 +63,8 @@ type LinesPrettyConfig struct {
 // DiffLinesPrettyText converts two strings into a pretty text report of the diffs by line.
 func (dmp *DiffMatchPatch) DiffLinesPrettyText(config LinesPrettyConfig, text1, text2 string) string {
 	fromRunes, toRunes, linesMap := dmp.DiffLinesToRunes(text1, text2)
-	diffs := dmp.DiffMainRunes(fromRunes, toRunes, false)
+	runeDiffs := dmp.DiffMainRunes(fromRunes, toRunes, false)
+	diffs := dmp.DiffCharsToLines(runeDiffs, linesMap)
 	patches := dmp.PatchMake(diffs)
 
 	var buff bytes.Buffer
@@ -96,9 +97,8 @@ func (dmp *DiffMatchPatch) DiffLinesPrettyText(config LinesPrettyConfig, text1, 
 	for _, patch := range patches {
 		patch.addCoordsToBuffer(&buff)
 		buff.WriteRune('\n')
-		linesDiff := dmp.DiffCharsToLines(patch.diffs, linesMap)
-		for di, diff := range linesDiff {
-			lastDiff := di == len(linesDiff)-1
+		for di, diff := range patch.diffs {
+			lastDiff := di == len(patch.diffs)-1
 			switch diff.Type {
 			case DiffInsert:
 				writeBlock('+', diff.Text, "\x1b[32m", lastDiff)
